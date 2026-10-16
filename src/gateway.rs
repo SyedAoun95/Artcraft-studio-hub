@@ -31,12 +31,14 @@ struct Child {
 
 impl Child {
     fn spawn(app: &App, cfg: &Config) -> Result<Arc<Child>, String> {
-        let mut proc = Command::new(app.cli(cfg))
-            .args(app.mcp_args(cfg))
-            .current_dir(app.dir(cfg))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+        let mut cmd = Command::new(app.cli(cfg));
+        cmd.args(app.mcp_args(cfg)).current_dir(app.dir(cfg)).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(apps::win::NO_WINDOW);
+        }
+        let mut proc = cmd
             .spawn()
             .map_err(|e| format!("could not start {}'s MCP server: {e}", app.name))?;
         let stdin = proc.stdin.take().ok_or("no stdin")?;

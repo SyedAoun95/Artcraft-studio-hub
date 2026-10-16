@@ -1,0 +1,10 @@
+# The seven apps bundled into the Windows suite: id and upstream release (github.com/storytold/<id>).
+# Each release's official "<id>-<version>-windows-<arch>-portable.zip" is used unchanged.
+# Bump a version here to ship a newer app; check that the flags in src/apps.rs still exist first.
+photocraft  0.9.0
+vectorcraft 0.11.0
+lightcraft  0.8.0
+designcraft 0.8.0
+filmcraft   0.8.0
+effectcraft 0.10.0
+pdfcraft    0.8.0

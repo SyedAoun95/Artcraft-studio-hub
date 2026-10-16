@@ -65,9 +65,10 @@ fn texture(ctx: &egui::Context, name: &str, bytes: &[u8]) -> Option<TextureHandl
 }
 
 fn setup_style(ctx: &egui::Context) {
-    // Use the system font (San Francisco) when it is there; egui's own font stays as the fallback.
+    // Use the system font (San Francisco / Segoe UI) when it is there; egui's own font stays as the fallback.
     let mut fonts = egui::FontDefinitions::default();
-    if let Ok(bytes) = std::fs::read("/System/Library/Fonts/SFNS.ttf") {
+    let system_font = if cfg!(windows) { r"C:\Windows\Fonts\segoeui.ttf" } else { "/System/Library/Fonts/SFNS.ttf" };
+    if let Ok(bytes) = std::fs::read(system_font) {
         fonts.font_data.insert("sf".into(), Arc::new(egui::FontData::from_owned(bytes)));
         if let Some(f) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
             f.insert(0, "sf".into());
@@ -361,7 +362,8 @@ impl eframe::App for Hub {
                 ui.label(RichText::new(self.cfg.work_dir.display().to_string()).size(12.0));
                 if ui.link(RichText::new("Open").size(12.0)).clicked() {
                     let _ = std::fs::create_dir_all(&self.cfg.work_dir);
-                    let _ = std::process::Command::new("/usr/bin/open").arg(&self.cfg.work_dir).spawn();
+                    let opener = if cfg!(windows) { "explorer" } else { "/usr/bin/open" };
+                    let _ = std::process::Command::new(opener).arg(&self.cfg.work_dir).spawn();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(RichText::new(format!("{ready} of {} apps ready for AI", APPS.len())).size(12.0).color(MUTED));

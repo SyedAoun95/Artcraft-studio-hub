@@ -5,6 +5,10 @@
 //!   studio-hub status          app status as JSON
 //!   studio-hub open <app>      open an app with its agent channel
 
+// Windows: a GUI program, so opening the hub shows no console window. `mcp` still talks over the pipes
+// the AI tool gives it; `status` and `open` attach to the terminal they were typed in.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod activity;
 mod apps;
 mod config;
@@ -17,6 +21,17 @@ use serde_json::json;
 fn main() {
     // Finder may pass a "-psn_…" process-serial argument when opening the .app; it is not a command.
     let args: Vec<String> = std::env::args().skip(1).filter(|a| !a.starts_with("-psn_")).collect();
+    #[cfg(windows)]
+    if !matches!(args.first().map(String::as_str), None | Some("mcp")) {
+        use windows_sys::Win32::System::Console::{AttachConsole, GetStdHandle, ATTACH_PARENT_PROCESS, STD_OUTPUT_HANDLE};
+        // Output already redirected (a pipe or file) is kept; otherwise print to the parent's console.
+        // SAFETY: plain Win32 calls; AttachConsole fails harmlessly when there is no parent console.
+        unsafe {
+            if GetStdHandle(STD_OUTPUT_HANDLE).is_null() {
+                AttachConsole(ATTACH_PARENT_PROCESS);
+            }
+        }
+    }
     match args.first().map(String::as_str) {
         None => {
             if let Err(e) = ui::run() {

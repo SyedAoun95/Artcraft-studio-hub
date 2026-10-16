@@ -31,6 +31,24 @@ done
 scripts/make-dmg.sh --arch x86_64                    # -> dist/Studio-Suite-<version>-macos-x86_64.dmg
 ```
 
+### Build the Windows installer
+
+Runs on Windows (or let GitHub Actions do it: `.github/workflows/windows.yml` builds it on every push to
+`main` and attaches it to a release for each `v*` tag):
+
+```powershell
+# Rust (MSVC), the Windows SDK and Inno Setup 6 (winget install JRSoftware.InnoSetup)
+pwsh scripts/make-windows.ps1     # -> dist\Studio-Suite-<version>-windows-x64-setup.exe  (+ portable .zip)
+```
+
+It bundles `studio-hub.exe` with the seven apps' official Windows builds (versions in
+`packaging/windows/apps.txt`) as `apps\<app>\<app>.exe` + `<app>-cli.exe`. The installer is per-user
+(no admin) into `%LOCALAPPDATA%\Programs\Studio Hub`. Everything works as on the Mac: the hub window,
+opening apps with AI control, **Bring to front** / **Reopen with AI control**, the `studio-hub mcp` gateway, and
+**Connect** for Claude Code (`claude.exe` or npm's `claude.cmd`), Codex (`%USERPROFILE%\.codex\config.toml`)
+and Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`). Settings and logs are in
+`%APPDATA%\Studio Hub`. `scripts/smoke-mcp.py <studio-hub.exe>` checks the gateway the way AI tools use it.
+
 Installed (from the .dmg), Studio Hub finds the apps next to itself, in /Applications or ~/Applications,
 opens them with `open` (so they behave like normal Mac apps) and can bring an open app to the front (**Show**).
 `scripts/make-app.sh` still builds a development-only `Studio Hub.app` that uses the apps in this folder.
@@ -71,7 +89,7 @@ The hub and the gateway read the same settings, so switching agents off applies 
 1. **Phase 1 (this):** hub window, launcher, MCP gateway, connect buttons, agent switches, activity log.
 2. **Phase 2:** per-launch tokens for every app (needs small upstream changes), approval prompts for
    destructive actions, crash recovery, forwarding of notifications/resources, closing apps safely.
-3. **Phase 3:** a self-contained, signed and notarized macOS app (universal), then Windows and Linux,
+3. **Phase 3:** a self-contained, signed and notarized macOS app (universal), a signed Windows installer, then Linux,
    with auto-update; own name and icon (the ArtCraft name and logos are trademarks of the ArtCraft Team).
 
 All seven apps are MIT OR Apache-2.0; a distributed build must include their LICENSE and NOTICE files.

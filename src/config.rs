@@ -24,11 +24,17 @@ pub struct Config {
 }
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(var).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// macOS: ~/Library/Application Support/Studio Hub. Windows: %APPDATA%\Studio Hub.
 pub fn support_dir() -> PathBuf {
-    home().join("Library/Application Support/Studio Hub")
+    if cfg!(windows) {
+        std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| home().join("AppData/Roaming")).join(PRODUCT)
+    } else {
+        home().join("Library/Application Support/Studio Hub")
+    }
 }
 
 pub fn config_path() -> PathBuf {

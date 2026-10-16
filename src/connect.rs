@@ -27,7 +27,17 @@ impl Client {
 
 /// Is this copy of Studio Hub running from a mounted disk image (the .dmg window) rather than installed?
 pub fn running_from_disk_image() -> bool {
-    std::env::current_exe().map(|p| p.starts_with("/Volumes/")).unwrap_or(false)
+    cfg!(target_os = "macos") && std::env::current_exe().map(|p| p.starts_with("/Volumes/")).unwrap_or(false)
+}
+
+/// Where the installer puts studio-hub on this system (used only when the running copy can't be named).
+fn default_install() -> String {
+    if cfg!(windows) {
+        std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(|| crate::config::home().join("AppData/Local"))
+            .join("Programs/Studio Hub/studio-hub.exe").display().to_string()
+    } else {
+        "/Applications/Studio Hub.app/Contents/MacOS/studio-hub".into()
+    }
 }
 
 /// The command an AI tool runs to start the gateway. Always the installed copy: a copy running from the
@@ -47,11 +57,12 @@ pub fn gateway_command() -> Result<(String, Vec<String>), String> {
 
 /// Generic snippet for any other MCP client (Cursor, Windsurf, VS Code, …).
 pub fn generic_snippet() -> String {
-    let (cmd, args) = gateway_command().unwrap_or_else(|_| ("/Applications/Studio Hub.app/Contents/MacOS/studio-hub".into(), vec!["mcp".into()]));
+    let (cmd, args) = gateway_command().unwrap_or_else(|_| (default_install(), vec!["mcp".into()]));
     serde_json::to_string_pretty(&json!({"mcpServers": {SERVER_NAME: {"command": cmd, "args": args}}})).unwrap_or_default()
 }
 
 /// `claude` is often not on a Finder-launched app's PATH, so look in the usual install places too.
+#[cfg(not(windows))]
 fn claude_bin(home: &Path) -> Option<PathBuf> {
     let mut c: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).map(|d| d.join("claude")).collect())
@@ -61,12 +72,40 @@ fn claude_bin(home: &Path) -> Option<PathBuf> {
     c.into_iter().find(|p| p.is_file())
 }
 
+/// Windows: the native installer's claude.exe, or npm's claude.cmd shim.
+#[cfg(windows)]
+fn claude_bin(home: &Path) -> Option<PathBuf> {
+    let mut c: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).flat_map(|d| [d.join("claude.exe"), d.join("claude.cmd")]).collect())
+        .unwrap_or_default();
+    c.extend([home.join(".local/bin/claude.exe"), home.join(".claude/local/claude.exe"),
+              home.join("AppData/Roaming/npm/claude.cmd")]);
+    c.into_iter().find(|p| p.is_file())
+}
+
+/// Run `claude …` without a console window flashing up from the (GUI) hub.
+fn claude_cmd(bin: &Path) -> Command {
+    #[allow(unused_mut)]
+    let mut c = Command::new(bin);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(crate::apps::win::NO_WINDOW);
+    }
+    c
+}
+
 fn codex_path(home: &Path) -> PathBuf {
     home.join(".codex/config.toml")
 }
 
+/// Claude Desktop's settings folder: ~/Library/Application Support/Claude, or %APPDATA%\Claude on Windows.
+fn desktop_dir(home: &Path) -> PathBuf {
+    if cfg!(windows) { home.join("AppData/Roaming/Claude") } else { home.join("Library/Application Support/Claude") }
+}
+
 fn desktop_path(home: &Path) -> PathBuf {
-    home.join("Library/Application Support/Claude/claude_desktop_config.json")
+    desktop_dir(home).join("claude_desktop_config.json")
 }
 
 fn backup(path: &Path) -> std::io::Result<()> {
@@ -91,7 +130,7 @@ pub fn available(c: Client, home: &Path) -> bool {
     match c {
         Client::ClaudeCode => claude_bin(home).is_some(),
         Client::Codex => home.join(".codex").is_dir(),
-        Client::ClaudeDesktop => home.join("Library/Application Support/Claude").is_dir(),
+        Client::ClaudeDesktop => desktop_dir(home).is_dir(),
     }
 }
 
@@ -146,10 +185,10 @@ pub fn connect(c: Client, home: &Path) -> Result<String, String> {
     match c {
         Client::ClaudeCode => {
             let bin = claude_bin(home).ok_or("Claude Code (the `claude` command) was not found")?;
-            let _ = Command::new(&bin).args(["mcp", "remove", SERVER_NAME, "-s", "user"]).output();
+            let _ = claude_cmd(&bin).args(["mcp", "remove", SERVER_NAME, "-s", "user"]).output();
             let mut a = vec!["mcp".to_string(), "add".into(), "--scope".into(), "user".into(), SERVER_NAME.into(), "--".into(), cmd];
             a.extend(args);
-            let out = Command::new(&bin).args(&a).output().map_err(|e| e.to_string())?;
+            let out = claude_cmd(&bin).args(&a).output().map_err(|e| e.to_string())?;
             if !out.status.success() {
                 return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
             }
@@ -202,7 +241,7 @@ pub fn disconnect(c: Client, home: &Path) -> Result<String, String> {
     match c {
         Client::ClaudeCode => {
             let bin = claude_bin(home).ok_or("Claude Code was not found")?;
-            let out = Command::new(&bin).args(["mcp", "remove", SERVER_NAME, "-s", "user"]).output().map_err(|e| e.to_string())?;
+            let out = claude_cmd(&bin).args(["mcp", "remove", SERVER_NAME, "-s", "user"]).output().map_err(|e| e.to_string())?;
             if !out.status.success() {
                 return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
             }
@@ -263,7 +302,7 @@ mod tests {
     #[test]
     fn claude_desktop_keeps_other_servers() {
         let home = tmp_home("desktop");
-        let dir = home.join("Library/Application Support/Claude");
+        let dir = desktop_dir(&home);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("claude_desktop_config.json"), r#"{"mcpServers":{"other":{"command":"x"}},"theme":"dark"}"#).unwrap();
         connect(Client::ClaudeDesktop, &home).unwrap();
@@ -277,7 +316,7 @@ mod tests {
     #[test]
     fn connection_to_a_disk_image_or_missing_copy_is_stale() {
         let home = tmp_home("stale");
-        let dir = home.join("Library/Application Support/Claude");
+        let dir = desktop_dir(&home);
         std::fs::create_dir_all(&dir).unwrap();
         for cmd in ["/Volumes/Studio Suite 1/Studio Hub.app/Contents/MacOS/studio-hub", "/nowhere/studio-hub"] {
             let j = json!({"mcpServers": {"studio-hub": {"command": cmd, "args": ["mcp"]}}});
