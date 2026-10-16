@@ -60,7 +60,7 @@ impl Default for Config {
         let legacy_tokens = home().join(".config/artcraft");
         let tokens_dir = if legacy_tokens.is_dir() { legacy_tokens } else { support_dir().join("tokens") };
         let legacy_work = apps_root.join("craft-work");
-        let work_dir = if legacy_work.is_dir() { legacy_work } else { home().join("Documents/Studio Hub") };
+        let work_dir = if legacy_work.is_dir() { legacy_work } else { home().join("Documents").join(PRODUCT) };
         Config { apps_root, work_dir, tokens_dir, agents_enabled: true, disabled_apps: Vec::new() }
     }
 }

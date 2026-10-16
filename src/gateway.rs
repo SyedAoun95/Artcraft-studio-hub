@@ -31,6 +31,8 @@ struct Child {
 
 impl Child {
     fn spawn(app: &App, cfg: &Config) -> Result<Arc<Child>, String> {
+        // The app's agent is given the work folder (PdfCraft's refuses a --root that does not exist yet).
+        let _ = crate::config::ensure_dir(&cfg.work_dir);
         let mut cmd = Command::new(app.cli(cfg));
         cmd.args(app.mcp_args(cfg)).current_dir(app.dir(cfg)).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(windows)]
